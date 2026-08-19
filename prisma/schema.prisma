@@ -1,0 +1,207 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  CHIEF_EDITOR
+  EDITOR
+  GUEST_EDITOR
+  REVIEWER
+  AUTHOR
+}
+
+enum PaperType {
+  RESEARCH_PAPER
+  REVIEW_PAPER
+}
+
+enum SubmissionStatus {
+  DRAFT
+  SUBMITTED
+  ASSIGNED
+  UNDER_REVIEW
+  REVIEWS_COMPLETED
+  REVISION_REQUIRED
+  RESUBMITTED
+  ACCEPTED
+  REJECTED
+  PUBLISHED
+}
+
+enum ReviewerStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum Recommendation {
+  ACCEPT
+  REJECT
+  MAJOR_REVISION
+  MINOR_REVISION
+}
+
+enum ReviewStatus {
+  PENDING
+  COMPLETED
+}
+
+enum VerificationTokenType {
+  PASSWORD_RESET
+  OTP
+}
+
+model User {
+  id                      String             @id @default(uuid())
+  name                    String
+  email                   String
+  password                String
+  role                    Role
+  isActive                Boolean            @default(true)
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+  
+  submissions             Submission[]       @relation("AuthorSubmissions")
+  assignedSubmissions     Submission[]       @relation("EditorSubmissions")
+  assignedGuestSubmissions Submission[]      @relation("GuestEditorSubmissions")
+  assignedBySubmissions   Submission[]       @relation("AssignedBySubmissions")
+  reviews                 Review[]           @relation("ReviewerReviews")
+  reviewerProfile         ReviewerProfile?
+  activityLogs            ActivityLog[]
+  timelineEvents          TimelineEvent[]
+  notifications           Notification[]
+
+  @@unique([email, role])
+}
+
+model ReviewerProfile {
+  id          String         @id @default(uuid())
+  userId      String         @unique
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institution String
+  domains     String         // Comma separated list of domains
+  status      ReviewerStatus @default(PENDING)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model IdSequence {
+  id         String   @id @default(uuid())
+  name       String   @unique
+  currentVal Int      @default(110)
+}
+
+model Submission {
+  id                   String           @id @default(uuid())
+  paperId              String           @unique // Auto-generated sequential ID like IST000111
+  title                String
+  abstract             String
+  paperType            PaperType
+  status               SubmissionStatus @default(DRAFT)
+  fileUrl              String
+  coverLetterUrl       String?
+  supportingFilesUrl   String?
+  responseLetterUrl    String?
+  keywords             String           // Comma separated keywords
+  primaryDomain        String
+  secondaryDomain      String?
+  country              String
+  journalReference     String?
+  submitterId          String
+  submitter            User             @relation("AuthorSubmissions", fields: [submitterId], references: [id], onDelete: Cascade)
+  
+  editorId             String?
+  editor               User?            @relation("EditorSubmissions", fields: [editorId], references: [id], onDelete: SetNull)
+  
+  guestEditorId        String?
+  guestEditor          User?            @relation("GuestEditorSubmissions", fields: [guestEditorId], references: [id], onDelete: SetNull)
+  
+  assignedById         String?
+  assignedBy           User?            @relation("AssignedBySubmissions", fields: [assignedById], references: [id], onDelete: SetNull)
+  
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  
+  authors              SubmissionAuthor[]
+  reviews              Review[]
+  timeline             TimelineEvent[]
+  logs                 ActivityLog[]
+}
+
+model SubmissionAuthor {
+  id             String     @id @default(uuid())
+  submissionId   String
+  submission     Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  name           String
+  email          String
+  orcid          String?
+  isCorresponding Boolean    @default(false)
+}
+
+model Review {
+  id             String         @id @default(uuid())
+  submissionId   String
+  submission     Submission     @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  reviewerId     String
+  reviewer       User           @relation("ReviewerReviews", fields: [reviewerId], references: [id], onDelete: Cascade)
+  comments       String
+  mistakes       String
+  recommendation Recommendation
+  fileUrl        String?
+  status         ReviewStatus   @default(PENDING)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model TimelineEvent {
+  id           String           @id @default(uuid())
+  submissionId String
+  submission   Submission       @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  status       SubmissionStatus
+  actorId      String?
+  actor        User?            @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actorName    String
+  comments     String?
+  createdAt    DateTime         @default(now())
+}
+
+model ActivityLog {
+  id           String      @id @default(uuid())
+  userId       String?
+  user         User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userEmail    String?
+  submissionId String?
+  submission   Submission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  action       String
+  details      String?
+  ipAddress    String?
+  createdAt    DateTime    @default(now())
+}
+
+model VerificationToken {
+  id        String                @id @default(uuid())
+  email     String
+  token     String
+  expires   DateTime
+  type      VerificationTokenType
+  createdAt DateTime              @default(now())
+}
+
+model Notification {
+  id           String     @id @default(uuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String
+  message      String
+  paperId      String?
+  read         Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
